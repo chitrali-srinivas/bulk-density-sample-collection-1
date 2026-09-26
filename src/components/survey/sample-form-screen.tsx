@@ -17,7 +17,7 @@ import {
 } from "@/lib/format";
 import { geotagSamplePhoto, readDeviceLocation } from "@/lib/geotag-image";
 import type { PlotRow, SampleDraft } from "@/lib/types";
-import { CalendarIcon, CameraIcon, MapPinIcon } from "lucide-react";
+import { CalendarIcon, CameraIcon, MapPinIcon, XIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 export function SampleFormScreen({
@@ -323,67 +323,157 @@ function BarcodeScanner({
   onClose: () => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [message, setMessage] = useState(() =>
-    typeof window !== "undefined" && window.BarcodeDetector
-      ? "Point the camera at the sample code."
-      : "This browser cannot scan codes. Type the sample ID instead.",
-  );
+  const onDetectRef = useRef(onDetect);
+  const [message, setMessage] = useState("Starting camera…");
+  const [cameraFailed, setCameraFailed] = useState(false);
 
   useEffect(() => {
-    const Detector = window.BarcodeDetector;
-    if (!Detector) return;
+    onDetectRef.current = onDetect;
+  }, [onDetect]);
 
-    let stop = false;
+  useEffect(() => {
+    let cancelled = false;
+    let controls: { stop: () => void } | null = null;
     let stream: MediaStream | null = null;
     let timer = 0;
 
     void (async () => {
+      const video = videoRef.current;
+      if (!video) return;
+
       try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment" },
-        });
-        const video = videoRef.current;
-        if (!video) return;
-        video.srcObject = stream;
-        await video.play();
-        const detector = new Detector({
-          formats: ["qr_code", "code_128", "code_39", "ean_13", "ean_8", "upc_a", "data_matrix"],
-        });
-        const tick = async () => {
-          if (stop || !videoRef.current) return;
-          try {
-            const codes = await detector.detect(videoRef.current);
-            const value = codes[0]?.rawValue?.trim();
-            if (value) {
-              onDetect(parseSampleId(value));
-              return;
-            }
-          } catch {
-            setMessage("Could not read a code. Type the sample ID instead.");
+        if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+          throw new Error("Camera is not available in this browser.");
+        }
+
+        // Native BarcodeDetector (Chrome Android) when present.
+        if (window.BarcodeDetector) {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: { ideal: "environment" } },
+            audio: false,
+          });
+          if (cancelled) {
+            stream.getTracks().forEach((track) => track.stop());
             return;
           }
-          timer = window.setTimeout(() => void tick(), 250);
-        };
-        void tick();
-      } catch {
-        setMessage("Camera permission is needed to scan. Type the sample ID instead.");
+          video.srcObject = stream;
+          video.setAttribute("playsinline", "true");
+          await video.play();
+          setMessage("Point the camera at the sample code.");
+          const detector = new window.BarcodeDetector({
+            formats: ["qr_code", "code_128", "code_39", "ean_13", "ean_8", "upc_a", "data_matrix"],
+          });
+          const tick = async () => {
+            if (cancelled || !videoRef.current) return;
+            try {
+              const codes = await detector.detect(videoRef.current);
+              const value = codes[0]?.rawValue?.trim();
+              if (value) {
+                onDetectRef.current(parseSampleId(value));
+                return;
+              }
+            } catch {
+              // Keep scanning; transient detect errors are common.
+            }
+            timer = window.setTimeout(() => void tick(), 250);
+          };
+          void tick();
+          return;
+        }
+
+        // ZXing works on iOS Safari / iOS Chrome (WebKit).
+        const { BrowserMultiFormatReader } = await import("@zxing/browser");
+        if (cancelled) return;
+        const reader = new BrowserMultiFormatReader();
+        setMessage("Point the camera at the sample code.");
+        controls = await reader.decodeFromConstraints(
+          {
+            audio: false,
+            video: { facingMode: { ideal: "environment" } },
+          },
+          video,
+          (result) => {
+            if (cancelled || !result) return;
+            const value = result.getText()?.trim();
+            if (!value) return;
+            cancelled = true;
+            controls?.stop();
+            onDetectRef.current(parseSampleId(value));
+          },
+        );
+      } catch (error: unknown) {
+        if (cancelled) return;
+        setCameraFailed(true);
+        const denied =
+          error instanceof DOMException &&
+          (error.name === "NotAllowedError" || error.name === "PermissionDeniedError");
+        setMessage(
+          denied
+            ? "Camera permission is needed to scan. Close and type the sample ID instead."
+            : "Could not open the camera. Close and type the sample ID instead.",
+        );
       }
     })();
 
     return () => {
-      stop = true;
+      cancelled = true;
       window.clearTimeout(timer);
+      controls?.stop();
       stream?.getTracks().forEach((track) => track.stop());
+      const video = videoRef.current;
+      if (video) {
+        video.srcObject = null;
+      }
     };
-  }, [onDetect]);
+  }, []);
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-black text-white">
-      <ScreenHeader title="Scan sample ID" onBack={onClose} close />
-      <div className="relative min-h-0 flex-1">
-        <video ref={videoRef} className="absolute inset-0 h-full w-full object-cover" muted playsInline />
+      <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-1 border-b border-white/15 bg-black px-2 pt-[env(safe-area-inset-top)]">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-lg"
+          className="text-white hover:bg-white/10 hover:text-white"
+          onClick={onClose}
+          aria-label="Close scanner"
+        >
+          <XIcon />
+        </Button>
+        <h1 className="flex-1 truncate text-center text-base font-semibold tracking-tight">
+          Scan sample ID
+        </h1>
+        <span className="size-9" />
+      </header>
+
+      <div className="relative min-h-0 flex-1 bg-black">
+        {!cameraFailed ? (
+          <video
+            ref={videoRef}
+            className="absolute inset-0 h-full w-full object-cover"
+            muted
+            playsInline
+            autoPlay
+            controls={false}
+          />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center px-6 text-center text-sm text-white/80">
+            Camera preview unavailable
+          </div>
+        )}
       </div>
-      <p className="px-4 py-4 text-center text-sm">{message}</p>
+
+      <div className="shrink-0 space-y-3 border-t border-white/15 bg-black px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+        <p className="text-center text-sm text-white/90">{message}</p>
+        <Button
+          type="button"
+          variant="secondary"
+          className="h-12 w-full text-base"
+          onClick={onClose}
+        >
+          Close and type sample ID
+        </Button>
+      </div>
     </div>
   );
 }
