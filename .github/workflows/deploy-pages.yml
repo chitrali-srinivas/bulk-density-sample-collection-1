@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -24,15 +24,30 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: "22.x"
 
       - name: Install
         run: |
-          set -eux
-          node -v
-          npm -v
-          ls -la package.json package-lock.json
-          npm ci --no-fund --no-audit
+          echo "## Install diagnostics" >> "$GITHUB_STEP_SUMMARY"
+          echo "- node: $(node -v)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- npm: $(npm -v)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- pwd: $(pwd)" >> "$GITHUB_STEP_SUMMARY"
+          ls -la package.json package-lock.json >> "$GITHUB_STEP_SUMMARY" 2>&1 || true
+          set +e
+          npm install --no-fund --no-audit --loglevel=verbose > install.log 2>&1
+          code=$?
+          set -e
+          tail -n 120 install.log | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "exit code: $code" >> "$GITHUB_STEP_SUMMARY"
+          exit $code
+
+      - name: Upload install log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: install-log
+          path: install.log
 
       - name: Build static site
         env:
@@ -49,7 +64,7 @@ jobs:
 
   deploy:
     needs: build
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
