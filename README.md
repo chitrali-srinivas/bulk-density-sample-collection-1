@@ -25,16 +25,16 @@ Do not seed `status`. It becomes collected when a sample is submitted.
 
 ## GitHub Pages
 
-This app is a static Next.js export hosted at:
+Secrets alone are not enough. The Pages **source must be GitHub Actions**, not "Deploy from a branch" / `docs`. Branch deploys only publish markdown/docs and never run the Next.js build that injects your secrets.
 
-[https://chitrali-srinivas.github.io/bulk-density-sample-collection/](https://chitrali-srinivas.github.io/bulk-density-sample-collection/)
+Live site: [https://chitrali-srinivas.github.io/bulk-density-sample-collection-1/](https://chitrali-srinivas.github.io/bulk-density-sample-collection-1/)
 
-1. In the GitHub repo, open **Settings → Secrets and variables → Actions** and add:
+1. **Settings → Secrets and variables → Actions** — add:
    - `NEXT_PUBLIC_SUPABASE_URL`
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
    - `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`
-2. Enable **Settings → Pages → Build and deployment → Source: GitHub Actions**
+2. **Settings → Pages → Build and deployment → Source: GitHub Actions**
 3. Restrict the Google Maps key to `https://chitrali-srinivas.github.io/*`
-4. Push to `main` (or run the **Deploy GitHub Pages** workflow)
+4. Push to `main`, or open **Actions → Deploy GitHub Pages → Run workflow**
 
-The workflow builds with `NEXT_PUBLIC_BASE_PATH=/bulk-density-sample-collection`.
+The workflow sets `NEXT_PUBLIC_BASE_PATH` from the repo name automatically (`/bulk-density-sample-collection-1`).
