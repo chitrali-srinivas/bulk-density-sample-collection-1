@@ -34,15 +34,15 @@ Example:
 
 ```csv
 email,name
-alex@company.com,Alex Surveyor
-sam@company.com,Sam Field
+alex@maticarbon.com,Alex Surveyor
+sam@maticarbon.com,Sam Field
 ```
 
 Or insert in SQL:
 
 ```sql
 insert into public.surveyors (email, name) values
-  ('alex@company.com', 'Alex Surveyor')
+  ('alex@maticarbon.com', 'Alex Surveyor')
 on conflict (email) do update set name = excluded.name, active = true;
 ```
 
