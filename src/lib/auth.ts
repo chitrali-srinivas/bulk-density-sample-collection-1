@@ -12,40 +12,33 @@ export async function isAllowlistedEmail(email: string) {
   return Boolean(data);
 }
 
-export async function sendSurveyorOtp(email: string) {
+export async function signInSurveyor(email: string, password: string) {
   const supabase = getSupabase();
   if (!supabase) throw new Error("Supabase is not configured.");
 
   const normalized = email.trim().toLowerCase();
+  if (!normalized || !password) {
+    throw new Error("Enter your email and password.");
+  }
+
   const allowed = await isAllowlistedEmail(normalized);
   if (!allowed) {
     throw new Error("This email is not authorized for sample collection.");
   }
 
-  const { error } = await supabase.auth.signInWithOtp({
+  const { error } = await supabase.auth.signInWithPassword({
     email: normalized,
-    options: {
-      shouldCreateUser: true,
-    },
+    password,
   });
-  if (error) throw new Error(error.message);
-}
+  if (error) {
+    throw new Error(
+      error.message === "Invalid login credentials"
+        ? "Wrong email or password."
+        : error.message,
+    );
+  }
 
-export async function verifySurveyorOtp(email: string, token: string) {
-  const supabase = getSupabase();
-  if (!supabase) throw new Error("Supabase is not configured.");
-
-  const normalized = email.trim().toLowerCase();
-  const { data, error } = await supabase.auth.verifyOtp({
-    email: normalized,
-    token: token.trim(),
-    type: "email",
-  });
-  if (error) throw new Error(error.message);
-  if (!data.session) throw new Error("Could not verify the login code.");
-
-  const surveyor = await fetchCurrentSurveyor();
-  return surveyor;
+  return fetchCurrentSurveyor();
 }
 
 export async function fetchCurrentSurveyor(): Promise<Surveyor> {

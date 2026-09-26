@@ -50,17 +50,39 @@ When a surveyor submits a sample, `farmer_plots.surveyor_name` and `surveyor_ema
 
 ## Auth setup (required)
 
-In Supabase → **Authentication → Providers → Email**:
+Login uses **email + password** (no magic-link email / no Pro email templates).
 
-1. Enable Email
-2. Enable **Email OTP** / magic link email logins
+### 1. Enable Email provider
 
-In Supabase → **Authentication → URL configuration**:
+Supabase → **Authentication → Providers → Email** → enable Email.  
+You can disable “Confirm email” for simpler field onboarding.
 
-1. Site URL: your Pages URL, e.g. `https://chitrali-srinivas.github.io/bulk-density-sample-collection-1/`
-2. Redirect URLs: add that same Pages URL and `http://localhost:3000/**`
+### 2. Create each surveyor login
 
-Surveyors sign in with email → one-time code. Unknown emails are rejected before a code is sent.
+For every surveyor:
+
+1. **Authentication → Users → Add user**
+   - Email: their work email  
+   - Password: temporary password you share with them  
+   - Auto Confirm User: **ON**
+2. Add the same email to the allowlist table `surveyors` (`email`, `name`)
+
+```sql
+insert into public.surveyors (email, name) values
+  ('alex@company.com', 'Alex Surveyor')
+on conflict (email) do update set name = excluded.name, active = true;
+```
+
+Both steps are required: Auth user (password) **and** `surveyors` row (name + allowlist).
+
+### 3. URL configuration (optional, for dashboard defaults)
+
+**Authentication → URL configuration**
+
+- Site URL: `https://chitrali-srinivas.github.io/bulk-density-sample-collection-1/`
+- Redirect URLs: that URL and `http://localhost:3000/**`
+
+Surveyors open the app and sign in with email + password. Unknown emails are rejected.
 
 ## GitHub Pages
 
