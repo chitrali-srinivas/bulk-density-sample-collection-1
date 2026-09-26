@@ -21,7 +21,7 @@ export const DEMO_PLOTS: PlotRow[] = [
     sample_lat: 24.1278,
     sample_long: 78.9877,
     surveyor_name: "Demo Surveyor",
-    surveyor_email: "demo@example.com",
+    surveyor_email: "demo@maticarbon.com",
     status: "enrolled",
     collected_at: now,
     created_at: now,

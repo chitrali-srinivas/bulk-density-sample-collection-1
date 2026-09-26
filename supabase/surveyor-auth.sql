@@ -1,5 +1,5 @@
--- Run this in the Supabase SQL editor if farmer_plots already exists.
--- Softens the upgrade: adds surveyor allowlist + stamps surveyor on submit.
+-- Email-only surveyor gate (no Supabase Auth / no passwords).
+-- Run in the Supabase SQL editor on top of an existing project.
 
 create extension if not exists pgcrypto;
 
@@ -25,6 +25,9 @@ begin
   end if;
   if new.name is null or new.name = '' then
     raise exception 'Surveyor name is required';
+  end if;
+  if new.email !~* '@maticarbon\.com$' then
+    raise exception 'Surveyor email must be a @maticarbon.com address';
   end if;
   return new;
 end;
@@ -60,6 +63,43 @@ alter table public.farmer_plots
 alter table public.farmer_plots
   add column if not exists surveyor_email text;
 
+create or replace function public.get_surveyor_by_email(p_email text)
+returns public.surveyors
+language plpgsql
+security definer
+set search_path = public
+stable
+as $$
+declare
+  result public.surveyors;
+  normalized text := lower(btrim(coalesce(p_email, '')));
+begin
+  if normalized = '' then
+    raise exception 'Enter your work email';
+  end if;
+  if normalized !~* '@maticarbon\.com$' then
+    raise exception 'Only @maticarbon.com emails can sign in';
+  end if;
+
+  select *
+  into result
+  from public.surveyors s
+  where s.email = normalized
+    and s.active
+  limit 1;
+
+  if result.id is null then
+    raise exception 'This email is not on the surveyor list';
+  end if;
+
+  return result;
+end;
+$$;
+
+revoke all on function public.get_surveyor_by_email(text) from public;
+grant execute on function public.get_surveyor_by_email(text) to anon, authenticated;
+
+-- Keep helper for older checks; domain + allowlist.
 create or replace function public.is_surveyor_email(p_email text)
 returns boolean
 language sql
@@ -72,56 +112,23 @@ as $$
     from public.surveyors s
     where s.email = lower(btrim(p_email))
       and s.active
+      and lower(btrim(p_email)) ~* '@maticarbon\.com$'
   );
 $$;
 
 revoke all on function public.is_surveyor_email(text) from public;
 grant execute on function public.is_surveyor_email(text) to anon, authenticated;
 
-create or replace function public.current_surveyor()
-returns public.surveyors
-language plpgsql
-security definer
-set search_path = public
-stable
-as $$
-declare
-  result public.surveyors;
-  caller_email text := lower(coalesce(auth.jwt() ->> 'email', ''));
-begin
-  if caller_email = '' then
-    raise exception 'Sign in required';
-  end if;
-
-  select *
-  into result
-  from public.surveyors s
-  where s.email = caller_email
-    and s.active
-  limit 1;
-
-  if result.id is null then
-    raise exception 'This email is not authorized for sample collection';
-  end if;
-
-  return result;
-end;
-$$;
-
-revoke all on function public.current_surveyor() from public;
-grant execute on function public.current_surveyor() to authenticated;
-
 drop policy if exists "surveyors can read plots" on public.farmer_plots;
 drop policy if exists "allowlisted surveyors can read plots" on public.farmer_plots;
 
-create policy "allowlisted surveyors can read plots"
+create policy "surveyors can read plots"
 on public.farmer_plots
 for select
-to authenticated
-using (public.is_surveyor_email(auth.jwt() ->> 'email'));
+to anon, authenticated
+using (true);
 
-revoke all on table public.farmer_plots from anon;
-grant select on public.farmer_plots to authenticated;
+grant select on public.farmer_plots to anon, authenticated;
 
 create or replace function public.submit_sample(
   p_id uuid,
@@ -130,7 +137,8 @@ create or replace function public.submit_sample(
   p_sample_picture_url text,
   p_core_cut_type text,
   p_sample_lat double precision,
-  p_sample_long double precision
+  p_sample_long double precision,
+  p_surveyor_email text
 )
 returns public.farmer_plots
 language plpgsql
@@ -141,7 +149,7 @@ declare
   result public.farmer_plots;
   surveyor public.surveyors;
 begin
-  surveyor := public.current_surveyor();
+  surveyor := public.get_surveyor_by_email(p_surveyor_email);
 
   if p_sample_id is null or length(btrim(p_sample_id)) = 0 then
     raise exception 'Sample ID is required';
@@ -179,24 +187,23 @@ begin
 end;
 $$;
 
-revoke all on function public.submit_sample(uuid, text, date, text, text, double precision, double precision) from public;
-revoke all on function public.submit_sample(uuid, text, date, text, text, double precision, double precision) from anon;
-grant execute on function public.submit_sample(uuid, text, date, text, text, double precision, double precision) to authenticated;
+-- Drop older overloads if present.
+drop function if exists public.submit_sample(uuid, text, date, text, text, double precision, double precision);
+drop function if exists public.current_surveyor();
+
+revoke all on function public.submit_sample(uuid, text, date, text, text, double precision, double precision, text) from public;
+grant execute on function public.submit_sample(uuid, text, date, text, text, double precision, double precision, text) to anon, authenticated;
 
 drop policy if exists "surveyors can upload sample photos" on storage.objects;
 drop policy if exists "allowlisted surveyors can upload sample photos" on storage.objects;
 
-create policy "allowlisted surveyors can upload sample photos"
+create policy "surveyors can upload sample photos"
 on storage.objects
 for insert
-to authenticated
-with check (
-  bucket_id = 'sample-photos'
-  and public.is_surveyor_email(auth.jwt() ->> 'email')
-);
+to anon, authenticated
+with check (bucket_id = 'sample-photos');
 
--- Example allowlist rows (edit before running, or import surveyors_template.csv):
+-- Example:
 -- insert into public.surveyors (email, name) values
---   ('surveyor1@example.com', 'Surveyor One'),
---   ('surveyor2@example.com', 'Surveyor Two')
+--   ('alex@maticarbon.com', 'Alex Surveyor')
 -- on conflict (email) do update set name = excluded.name, active = true;

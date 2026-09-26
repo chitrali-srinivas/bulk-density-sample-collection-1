@@ -9,10 +9,10 @@ import { SampleFormScreen } from "@/components/survey/sample-form-screen";
 import { ScreenHeader } from "@/components/survey/screen-header";
 import { Button } from "@/components/ui/button";
 import { DEMO_PLOTS } from "@/lib/demo-data";
-import { getSessionSurveyor, signOutSurveyor } from "@/lib/auth";
+import { clearStoredSurveyor, readStoredSurveyor } from "@/lib/auth";
 import { draftFromPlot, groupFarmers, parseSampleId, sampleLocationError } from "@/lib/format";
 import { fetchPlots, submitSample } from "@/lib/plots";
-import { getSupabase, isSupabaseConfigured } from "@/lib/supabase";
+import { isSupabaseConfigured } from "@/lib/supabase";
 import type { PlotRow, SampleDraft, Surveyor } from "@/lib/types";
 import { Loader2Icon } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -29,7 +29,12 @@ export function SurveyApp() {
   const [authLoading, setAuthLoading] = useState(!preview);
   const [surveyor, setSurveyor] = useState<Surveyor | null>(
     preview
-      ? { id: "demo", email: "demo@example.com", name: "Demo Surveyor", active: true }
+      ? {
+          id: "demo",
+          email: "demo@maticarbon.com",
+          name: "Demo Surveyor",
+          active: true,
+        }
       : null,
   );
   const [rows, setRows] = useState<PlotRow[]>(preview ? DEMO_PLOTS : []);
@@ -47,31 +52,8 @@ export function SurveyApp() {
 
   useEffect(() => {
     if (preview) return;
-    let cancelled = false;
-    void getSessionSurveyor()
-      .then((current) => {
-        if (!cancelled) setSurveyor(current);
-      })
-      .catch(() => {
-        if (!cancelled) setSurveyor(null);
-      })
-      .finally(() => {
-        if (!cancelled) setAuthLoading(false);
-      });
-
-    const supabase = getSupabase();
-    const { data } = supabase?.auth.onAuthStateChange((event) => {
-      if (event === "SIGNED_OUT") {
-        setSurveyor(null);
-        setRows([]);
-        setStack([{ type: "home" }]);
-      }
-    }) ?? { data: { subscription: { unsubscribe() {} } } };
-
-    return () => {
-      cancelled = true;
-      data.subscription.unsubscribe();
-    };
+    setSurveyor(readStoredSurveyor());
+    setAuthLoading(false);
   }, [preview]);
 
   useEffect(() => {
@@ -122,9 +104,8 @@ export function SurveyApp() {
     push({ type: "sample", rowId });
   }
 
-  async function handleSignOut() {
-    if (preview) return;
-    await signOutSurveyor();
+  function handleSignOut() {
+    clearStoredSurveyor();
     setSurveyor(null);
     setRows([]);
     setStack([{ type: "home" }]);
@@ -134,6 +115,10 @@ export function SurveyApp() {
 
   async function saveSample(plot: PlotRow, draft: SampleDraft) {
     if (draft.sampleLat === null || draft.sampleLong === null) return;
+    if (!surveyor) {
+      setSaveError("Sign in with your surveyor email first.");
+      return;
+    }
     const sampleId = parseSampleId(draft.sampleId);
     const locationMessage = sampleLocationError(
       plot.lat,
@@ -157,8 +142,8 @@ export function SurveyApp() {
           core_cut_type: draft.coreCutType.trim(),
           sample_lat: draft.sampleLat,
           sample_long: draft.sampleLong,
-          surveyor_name: surveyor?.name ?? "Demo Surveyor",
-          surveyor_email: surveyor?.email ?? "demo@example.com",
+          surveyor_name: surveyor.name,
+          surveyor_email: surveyor.email,
           status: "enrolled",
           collected_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
@@ -176,6 +161,7 @@ export function SurveyApp() {
           sampleLong: draft.sampleLong,
           pictureFile: draft.pictureFile,
           existingPictureUrl: draft.existingPictureUrl,
+          surveyorEmail: surveyor.email,
         });
         setRows((current) => current.map((row) => (row.id === plot.id ? updated : row)));
       }
@@ -223,7 +209,7 @@ export function SurveyApp() {
         base={base}
         villageId={villageId}
         surveyorName={surveyor?.name ?? null}
-        onSignOut={preview ? undefined : () => void handleSignOut()}
+        onSignOut={preview ? undefined : handleSignOut}
         onBaseChange={(nextBase) => {
           setBase(nextBase);
           setVillageId(null);

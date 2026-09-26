@@ -48,41 +48,27 @@ on conflict (email) do update set name = excluded.name, active = true;
 
 When a surveyor submits a sample, `farmer_plots.surveyor_name` and `surveyor_email` are set from this list.
 
-## Auth setup (required)
+## Surveyor access (email only)
 
-Login uses **email + password** (no magic-link email / no Pro email templates).
+No passwords / no Supabase Auth. Surveyors enter their work email.
 
-### 1. Enable Email provider
+Rules:
+1. Email must end with `@maticarbon.com`
+2. Email must exist in the `surveyors` table (`email`, `name`)
 
-Supabase → **Authentication → Providers → Email** → enable Email.  
-You can disable “Confirm email” for simpler field onboarding.
-
-### 2. Create each surveyor login
-
-For every surveyor:
-
-1. **Authentication → Users → Add user**
-   - Email: their work email  
-   - Password: temporary password you share with them  
-   - Auto Confirm User: **ON**
-2. Add the same email to the allowlist table `surveyors` (`email`, `name`)
+Add surveyors:
 
 ```sql
 insert into public.surveyors (email, name) values
-  ('alex@company.com', 'Alex Surveyor')
+  ('alex@maticarbon.com', 'Alex Surveyor')
 on conflict (email) do update set name = excluded.name, active = true;
 ```
 
-Both steps are required: Auth user (password) **and** `surveyors` row (name + allowlist).
+Or import `supabase/surveyors_template.csv`.
 
-### 3. URL configuration (optional, for dashboard defaults)
+Then run / re-run `supabase/surveyor-auth.sql` so `get_surveyor_by_email` and the updated `submit_sample` exist.
 
-**Authentication → URL configuration**
-
-- Site URL: `https://chitrali-srinivas.github.io/bulk-density-sample-collection-1/`
-- Redirect URLs: that URL and `http://localhost:3000/**`
-
-Surveyors open the app and sign in with email + password. Unknown emails are rejected.
+On submit, `farmer_plots.surveyor_name` and `surveyor_email` are filled from that list.
 
 ## GitHub Pages
 

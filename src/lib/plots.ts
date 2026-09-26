@@ -92,6 +92,7 @@ export async function submitSample(input: {
   sampleLong: number;
   pictureFile: File | null;
   existingPictureUrl: string | null;
+  surveyorEmail: string;
 }) {
   const supabase = getSupabase();
   if (!supabase) throw new Error("Supabase is not configured.");
@@ -115,6 +116,7 @@ export async function submitSample(input: {
     p_core_cut_type: input.coreCutType,
     p_sample_lat: input.sampleLat,
     p_sample_long: input.sampleLong,
+    p_surveyor_email: input.surveyorEmail,
   });
 
   if (error) throw new Error(error.message);
