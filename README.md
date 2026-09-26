@@ -1,36 +1,40 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Bulk Density Sample Collection
 
-## Getting Started
+Mobile-friendly surveyor app for collecting one soil sample per farmer plot.
 
-First, run the development server:
+Data is stored in Supabase. Photos upload to Supabase Storage. Maps use Google Maps.
+
+## Local development
 
 ```bash
+cp .env.example .env.local
+# fill NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Database
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Run `supabase/schema.sql` in the Supabase SQL editor, then import farmer/plot rows with:
 
-## Learn More
+`farmer_name,farmer_id,village_id,village_name,base,field_type,plot_id,lat,long`
 
-To learn more about Next.js, take a look at the following resources:
+Do not seed `status`. It becomes collected when a sample is submitted.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## GitHub Pages
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+This app is a static Next.js export hosted at:
 
-## Deploy on Vercel
+[https://mati-carbon.github.io/bulk-density-sample-collection/](https://mati-carbon.github.io/bulk-density-sample-collection/)
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+1. In the GitHub repo, open **Settings → Secrets and variables → Actions** and add:
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`
+2. Enable **Settings → Pages → Build and deployment → Source: GitHub Actions**
+3. Restrict the Google Maps key to `https://mati-carbon.github.io/*`
+4. Push to `main` (or run the **Deploy GitHub Pages** workflow)
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The workflow builds with `NEXT_PUBLIC_BASE_PATH=/bulk-density-sample-collection`.

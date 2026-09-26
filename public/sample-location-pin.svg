@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="40" height="56" viewBox="0 0 40 56" fill="none">
+  <path
+    d="M20 0C9.506 0 1 8.506 1 19c0 13.25 16.2 34.74 17.1 35.9a1.5 1.5 0 0 0 2.4 0C21.8 53.74 39 32.25 39 19 39 8.506 30.494 0 20 0Z"
+    fill="#EA4335"
+  />
+  <path
+    d="M20 0C9.506 0 1 8.506 1 19c0 13.25 16.2 34.74 17.1 35.9a1.5 1.5 0 0 0 2.4 0C21.8 53.74 39 32.25 39 19 39 8.506 30.494 0 20 0Z"
+    fill="url(#pinShade)"
+  />
+  <circle cx="20" cy="19" r="7.5" fill="#B31412" />
+  <defs>
+    <linearGradient id="pinShade" x1="20" y1="0" x2="20" y2="56" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FF6B5B" stop-opacity="0.35" />
+      <stop offset="1" stop-color="#C5221F" stop-opacity="0.2" />
+    </linearGradient>
+  </defs>
+</svg>
