@@ -3,6 +3,7 @@
 Mobile-friendly surveyor app for collecting one soil sample per farmer plot.
 
 Data is stored in Supabase. Photos upload to Supabase Storage. Maps use Google Maps.
+Only allowlisted surveyor emails can sign in. Sample rows store the surveyor name.
 
 ## Local development
 
@@ -17,11 +18,49 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## Database
 
-Run `supabase/schema.sql` in the Supabase SQL editor, then import farmer/plot rows with:
+1. Run `supabase/schema.sql` in the Supabase SQL editor  
+   (or `supabase/surveyor-auth.sql` if `farmer_plots` already exists).
+2. Import farmer/plot rows with:
 
 `farmer_name,farmer_id,village_id,village_name,base,field_type,plot_id,lat,long`
 
 Do not seed `status`. It becomes collected when a sample is submitted.
+
+3. Import surveyors with `supabase/surveyors_template.csv`:
+
+`email,name`
+
+Example:
+
+```csv
+email,name
+alex@company.com,Alex Surveyor
+sam@company.com,Sam Field
+```
+
+Or insert in SQL:
+
+```sql
+insert into public.surveyors (email, name) values
+  ('alex@company.com', 'Alex Surveyor')
+on conflict (email) do update set name = excluded.name, active = true;
+```
+
+When a surveyor submits a sample, `farmer_plots.surveyor_name` and `surveyor_email` are set from this list.
+
+## Auth setup (required)
+
+In Supabase → **Authentication → Providers → Email**:
+
+1. Enable Email
+2. Enable **Email OTP** / magic link email logins
+
+In Supabase → **Authentication → URL configuration**:
+
+1. Site URL: your Pages URL, e.g. `https://chitrali-srinivas.github.io/bulk-density-sample-collection-1/`
+2. Redirect URLs: add that same Pages URL and `http://localhost:3000/**`
+
+Surveyors sign in with email → one-time code. Unknown emails are rejected before a code is sent.
 
 ## GitHub Pages
 

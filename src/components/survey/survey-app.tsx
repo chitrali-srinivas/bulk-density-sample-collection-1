@@ -3,15 +3,17 @@
 import { BaseVillageScreen } from "@/components/survey/base-village-screen";
 import { FarmerListScreen } from "@/components/survey/farmer-list-screen";
 import { LocationPickerScreen } from "@/components/survey/location-picker-screen";
+import { LoginScreen } from "@/components/survey/login-screen";
 import { PlotListScreen } from "@/components/survey/plot-list-screen";
 import { SampleFormScreen } from "@/components/survey/sample-form-screen";
 import { ScreenHeader } from "@/components/survey/screen-header";
 import { Button } from "@/components/ui/button";
 import { DEMO_PLOTS } from "@/lib/demo-data";
+import { getSessionSurveyor, signOutSurveyor } from "@/lib/auth";
 import { draftFromPlot, groupFarmers, parseSampleId, sampleLocationError } from "@/lib/format";
 import { fetchPlots, submitSample } from "@/lib/plots";
-import { isSupabaseConfigured } from "@/lib/supabase";
-import type { PlotRow, SampleDraft } from "@/lib/types";
+import { getSupabase, isSupabaseConfigured } from "@/lib/supabase";
+import type { PlotRow, SampleDraft, Surveyor } from "@/lib/types";
 import { Loader2Icon } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
@@ -24,8 +26,14 @@ type Screen =
 
 export function SurveyApp() {
   const preview = !isSupabaseConfigured();
+  const [authLoading, setAuthLoading] = useState(!preview);
+  const [surveyor, setSurveyor] = useState<Surveyor | null>(
+    preview
+      ? { id: "demo", email: "demo@example.com", name: "Demo Surveyor", active: true }
+      : null,
+  );
   const [rows, setRows] = useState<PlotRow[]>(preview ? DEMO_PLOTS : []);
-  const [loading, setLoading] = useState(!preview);
+  const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [stack, setStack] = useState<Screen[]>([{ type: "home" }]);
   const [base, setBase] = useState<string | null>(null);
@@ -35,10 +43,42 @@ export function SurveyApp() {
   const [saveError, setSaveError] = useState<string | null>(null);
 
   const screen = stack[stack.length - 1];
+  const signedIn = Boolean(surveyor);
 
   useEffect(() => {
     if (preview) return;
     let cancelled = false;
+    void getSessionSurveyor()
+      .then((current) => {
+        if (!cancelled) setSurveyor(current);
+      })
+      .catch(() => {
+        if (!cancelled) setSurveyor(null);
+      })
+      .finally(() => {
+        if (!cancelled) setAuthLoading(false);
+      });
+
+    const supabase = getSupabase();
+    const { data } = supabase?.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_OUT") {
+        setSurveyor(null);
+        setRows([]);
+        setStack([{ type: "home" }]);
+      }
+    }) ?? { data: { subscription: { unsubscribe() {} } } };
+
+    return () => {
+      cancelled = true;
+      data.subscription.unsubscribe();
+    };
+  }, [preview]);
+
+  useEffect(() => {
+    if (preview || !surveyor) return;
+    let cancelled = false;
+    setLoading(true);
+    setLoadError(null);
     void fetchPlots()
       .then((plots) => {
         if (!cancelled) setRows(plots);
@@ -54,7 +94,7 @@ export function SurveyApp() {
     return () => {
       cancelled = true;
     };
-  }, [preview]);
+  }, [preview, surveyor]);
 
   const villageRows = useMemo(
     () => rows.filter((row) => row.base === base && row.village_id === villageId),
@@ -82,6 +122,16 @@ export function SurveyApp() {
     push({ type: "sample", rowId });
   }
 
+  async function handleSignOut() {
+    if (preview) return;
+    await signOutSurveyor();
+    setSurveyor(null);
+    setRows([]);
+    setStack([{ type: "home" }]);
+    setBase(null);
+    setVillageId(null);
+  }
+
   async function saveSample(plot: PlotRow, draft: SampleDraft) {
     if (draft.sampleLat === null || draft.sampleLong === null) return;
     const sampleId = parseSampleId(draft.sampleId);
@@ -107,6 +157,8 @@ export function SurveyApp() {
           core_cut_type: draft.coreCutType.trim(),
           sample_lat: draft.sampleLat,
           sample_long: draft.sampleLong,
+          surveyor_name: surveyor?.name ?? "Demo Surveyor",
+          surveyor_email: surveyor?.email ?? "demo@example.com",
           status: "enrolled",
           collected_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
@@ -141,7 +193,15 @@ export function SurveyApp() {
   }
 
   let body: ReactNode;
-  if (loading) {
+  if (authLoading) {
+    body = (
+      <div className="flex h-full items-center justify-center text-muted-foreground">
+        <Loader2Icon className="size-6 animate-spin" />
+      </div>
+    );
+  } else if (!signedIn) {
+    body = <LoginScreen onSignedIn={setSurveyor} />;
+  } else if (loading) {
     body = (
       <div className="flex h-full items-center justify-center text-muted-foreground">
         <Loader2Icon className="size-6 animate-spin" />
@@ -162,6 +222,8 @@ export function SurveyApp() {
         rows={rows}
         base={base}
         villageId={villageId}
+        surveyorName={surveyor?.name ?? null}
+        onSignOut={preview ? undefined : () => void handleSignOut()}
         onBaseChange={(nextBase) => {
           setBase(nextBase);
           setVillageId(null);

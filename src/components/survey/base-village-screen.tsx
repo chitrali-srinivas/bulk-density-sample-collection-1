@@ -16,6 +16,8 @@ export function BaseVillageScreen({
   rows,
   base,
   villageId,
+  surveyorName,
+  onSignOut,
   onBaseChange,
   onVillageChange,
   onContinue,
@@ -23,6 +25,8 @@ export function BaseVillageScreen({
   rows: PlotRow[];
   base: string | null;
   villageId: string | null;
+  surveyorName?: string | null;
+  onSignOut?: () => void;
   onBaseChange: (base: string) => void;
   onVillageChange: (villageId: string) => void;
   onContinue: () => void;
@@ -48,10 +52,24 @@ export function BaseVillageScreen({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="px-5 pt-8 pb-4">
-        <h1 className="text-xl font-semibold tracking-tight">Select Base & Village</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Choose where you are sampling today.
-        </p>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight">Select Base & Village</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Choose where you are sampling today.
+            </p>
+          </div>
+          {onSignOut ? (
+            <Button type="button" variant="ghost" className="shrink-0" onClick={onSignOut}>
+              Sign out
+            </Button>
+          ) : null}
+        </div>
+        {surveyorName ? (
+          <p className="mt-3 rounded-lg bg-muted px-3 py-2 text-sm">
+            Signed in as <span className="font-medium">{surveyorName}</span>
+          </p>
+        ) : null}
       </div>
       <div className="flex flex-1 flex-col gap-4 px-5">
         <div className="flex flex-col gap-2">

@@ -19,10 +19,19 @@ export type PlotRow = {
   core_cut_type: string | null;
   sample_lat: number | null;
   sample_long: number | null;
+  surveyor_name: string | null;
+  surveyor_email: string | null;
   status: PlotStatus;
   collected_at: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type Surveyor = {
+  id: string;
+  email: string;
+  name: string;
+  active: boolean;
 };
 
 export type VillageOption = {

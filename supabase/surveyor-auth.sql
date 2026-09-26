@@ -1,21 +1,5 @@
--- One table. Each row is one farmer plot, and that plot holds one sample.
--- Seed columns match the existing list. Sample columns start empty and are
--- filled when a surveyor submits. Submitting again updates the same row.
---
--- CSV headers for the seed import (do not include status):
--- farmer_name,farmer_id,village_id,village_name,base,field_type,plot_id,lat,long
---
--- Surveyor allowlist CSV:
--- email,name
---
--- status is managed by the app, not seeded:
---   pending   = no sample yet (default on insert)
---   enrolled  = sample collected for this plot (set by submit_sample)
---   rejected  = reserved for later review workflows
--- Farmer "Done" is computed in the app when every plot for that farmer is enrolled.
---
--- Auth: only emails in public.surveyors can sign in and submit. submit_sample
--- stamps surveyor_name from that allowlist using the signed-in user's email.
+-- Run this in the Supabase SQL editor if farmer_plots already exists.
+-- Softens the upgrade: adds surveyor allowlist + stamps surveyor on submit.
 
 create extension if not exists pgcrypto;
 
@@ -70,84 +54,11 @@ for each row execute function public.set_surveyors_updated_at();
 
 alter table public.surveyors enable row level security;
 
-drop policy if exists "surveyors can read own row" on public.surveyors;
-
--- No broad read of the allowlist. Clients use RPCs below.
-
-create table if not exists public.farmer_plots (
-  id uuid primary key default gen_random_uuid(),
-  farmer_name text not null,
-  farmer_id text not null,
-  village_id text not null,
-  village_name text not null,
-  base text not null,
-  field_type text,
-  plot_id text not null,
-  lat double precision,
-  long double precision,
-  sample_id text,
-  sample_date date,
-  sample_picture_url text,
-  core_cut_type text,
-  sample_lat double precision,
-  sample_long double precision,
-  surveyor_name text,
-  surveyor_email text,
-  status text not null default 'pending',
-  collected_at timestamptz,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  constraint farmer_plots_one_sample_per_plot unique (farmer_id, plot_id),
-  constraint farmer_plots_status_check check (status in ('pending', 'enrolled', 'rejected'))
-);
-
 alter table public.farmer_plots
   add column if not exists surveyor_name text;
 
 alter table public.farmer_plots
   add column if not exists surveyor_email text;
-
-create index if not exists farmer_plots_base_village_idx
-  on public.farmer_plots (base, village_id);
-
-create index if not exists farmer_plots_farmer_idx
-  on public.farmer_plots (farmer_id);
-
--- CSV imports often send blank "" for unmapped columns. Coerce those to pending
--- so status does not need to be seeded.
-create or replace function public.normalize_farmer_plot_status()
-returns trigger
-language plpgsql
-as $$
-begin
-  if new.status is null or btrim(new.status) = '' then
-    new.status := 'pending';
-  end if;
-  return new;
-end;
-$$;
-
-drop trigger if exists farmer_plots_normalize_status on public.farmer_plots;
-
-create trigger farmer_plots_normalize_status
-before insert or update on public.farmer_plots
-for each row execute function public.normalize_farmer_plot_status();
-
-create or replace function public.set_farmer_plots_updated_at()
-returns trigger
-language plpgsql
-as $$
-begin
-  new.updated_at = now();
-  return new;
-end;
-$$;
-
-drop trigger if exists farmer_plots_updated_at on public.farmer_plots;
-
-create trigger farmer_plots_updated_at
-before update on public.farmer_plots
-for each row execute function public.set_farmer_plots_updated_at();
 
 create or replace function public.is_surveyor_email(p_email text)
 returns boolean
@@ -200,8 +111,6 @@ $$;
 revoke all on function public.current_surveyor() from public;
 grant execute on function public.current_surveyor() to authenticated;
 
-alter table public.farmer_plots enable row level security;
-
 drop policy if exists "surveyors can read plots" on public.farmer_plots;
 drop policy if exists "allowlisted surveyors can read plots" on public.farmer_plots;
 
@@ -214,7 +123,6 @@ using (public.is_surveyor_email(auth.jwt() ->> 'email'));
 revoke all on table public.farmer_plots from anon;
 grant select on public.farmer_plots to authenticated;
 
--- Surveyors can only write the sample columns, through this function.
 create or replace function public.submit_sample(
   p_id uuid,
   p_sample_id text,
@@ -275,13 +183,8 @@ revoke all on function public.submit_sample(uuid, text, date, text, text, double
 revoke all on function public.submit_sample(uuid, text, date, text, text, double precision, double precision) from anon;
 grant execute on function public.submit_sample(uuid, text, date, text, text, double precision, double precision) to authenticated;
 
-insert into storage.buckets (id, name, public)
-values ('sample-photos', 'sample-photos', true)
-on conflict (id) do update set public = true;
-
 drop policy if exists "surveyors can upload sample photos" on storage.objects;
 drop policy if exists "allowlisted surveyors can upload sample photos" on storage.objects;
-drop policy if exists "anyone can view sample photos" on storage.objects;
 
 create policy "allowlisted surveyors can upload sample photos"
 on storage.objects
@@ -292,8 +195,8 @@ with check (
   and public.is_surveyor_email(auth.jwt() ->> 'email')
 );
 
-create policy "anyone can view sample photos"
-on storage.objects
-for select
-to public
-using (bucket_id = 'sample-photos');
+-- Example allowlist rows (edit before running, or import surveyors_template.csv):
+-- insert into public.surveyors (email, name) values
+--   ('surveyor1@example.com', 'Surveyor One'),
+--   ('surveyor2@example.com', 'Surveyor Two')
+-- on conflict (email) do update set name = excluded.name, active = true;
